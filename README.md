@@ -22,4 +22,6 @@ npm run dev
 - `src/lib/faces.ts` זיהוי פנים (face-api, מודלים ב-`public/models`)
 - `src/lib/beats.ts` זיהוי טמפו וביטים (spectral flux + מעקב ביטים בתכנות דינמי)
 - `src/lib/render.ts` ציור פריימים: פילטרים, זום קן ברנס, מעברים
+- `src/lib/captions.ts` כתוביות: ייבוא LRC/SRT, הצמדה לביטים, ציור על הווידאו (כולל עברית)
+- `src/Captions.tsx` עורך כתוביות וסנכרון בהקשה
 - `src/Player.tsx` ניגון וייצוא (MediaRecorder)

@@ -197,3 +197,71 @@ input[type='number'] {
   padding: 2px 8px;
   font-size: 0.8rem;
 }
+.lyrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.lyrics label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.lyrics textarea {
+  font: inherit;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  resize: vertical;
+}
+.sync audio {
+  max-width: 100%;
+}
+button.tap {
+  font-size: 1.1rem;
+  padding: 12px 20px;
+}
+.next-line {
+  font-size: 1.2rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border-radius: 8px;
+}
+.caption-table {
+  overflow-x: auto;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.caption-table table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+}
+.caption-table td,
+.caption-table th {
+  padding: 3px 4px;
+  text-align: start;
+}
+.caption-table input {
+  font: inherit;
+  width: 100%;
+  min-width: 70px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+.caption-table td:nth-child(4),
+.caption-table td:nth-child(5) {
+  min-width: 180px;
+}
+.caption-table tr.current {
+  background: var(--accent-soft);
+}

@@ -6,6 +6,8 @@ import { describeFaces, loadModels, matchPeople, referenceDescriptor } from './l
 import { detectBeats, mixToMono } from './lib/beats'
 import { FILTERS } from './lib/render'
 import Player from './Player'
+import Captions from './Captions'
+import { DEFAULT_CAPTION_STYLE, type Caption, type CaptionStyle } from './lib/captions'
 
 const FORMATS = {
   landscape: { label: 'רוחבי 16:9', width: 1280, height: 720 },
@@ -25,6 +27,8 @@ export default function App() {
   const [onlyMatches, setOnlyMatches] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [track, setTrack] = useState<Track | null>(null)
+  const [captions, setCaptions] = useState<Caption[]>([])
+  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>(DEFAULT_CAPTION_STYLE)
   const [format, setFormat] = useState<keyof typeof FORMATS>('landscape')
   const [project, setProject] = useState<Omit<Project, 'width' | 'height'>>({
     clips: [],
@@ -478,7 +482,18 @@ export default function App() {
       </section>
 
       <section>
-        <h2>6. תצוגה מקדימה וייצוא</h2>
+        <h2>6. כתוביות</h2>
+        <Captions
+          captions={captions}
+          setCaptions={setCaptions}
+          style={captionStyle}
+          setStyle={setCaptionStyle}
+          track={track}
+        />
+      </section>
+
+      <section>
+        <h2>7. תצוגה מקדימה וייצוא</h2>
         <div className="row">
           <label>
             פורמט{' '}
@@ -491,7 +506,7 @@ export default function App() {
             </select>
           </label>
         </div>
-        <Player project={fullProject} photos={photoMap} track={track} />
+        <Player project={fullProject} photos={photoMap} track={track} captions={captions} captionStyle={captionStyle} />
       </section>
     </div>
   )

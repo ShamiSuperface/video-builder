@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Photo, Project, Track } from './lib/types'
 import { drawFrame, pickRecorderMime, preload, schedule, totalDuration } from './lib/render'
+import { drawCaptions, type Caption, type CaptionStyle } from './lib/captions'
 
 interface Props {
   project: Project
   photos: Map<string, Photo>
   track: Track | null
+  captions: Caption[]
+  captionStyle: CaptionStyle
 }
 
 type Mode = 'idle' | 'playing' | 'exporting'
 
-export default function Player({ project, photos, track }: Props) {
+export default function Player({ project, photos, track, captions, captionStyle }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stopRef = useRef<(() => void) | null>(null)
   const [mode, setMode] = useState<Mode>('idle')
@@ -27,12 +30,16 @@ export default function Player({ project, photos, track }: Props) {
     if (!canvas) return
     let cancelled = false
     preload(sched).then((images) => {
-      if (!cancelled) drawFrame(canvas.getContext('2d')!, sched, images, project, Math.min(time, duration - 0.01))
+      if (cancelled) return
+      const ctx = canvas.getContext('2d')!
+      const t = Math.min(time, duration - 0.01)
+      drawFrame(ctx, sched, images, project, t)
+      drawCaptions(ctx, captions, captionStyle, t)
     })
     return () => {
       cancelled = true
     }
-  }, [sched, project, mode, time, duration])
+  }, [sched, project, mode, time, duration, captions, captionStyle])
 
   async function run(record: boolean) {
     const canvas = canvasRef.current
@@ -92,6 +99,7 @@ export default function Player({ project, photos, track }: Props) {
     const tick = () => {
       const t = Math.max(0, audio.currentTime - startAt)
       drawFrame(ctx2d, sched, images, project, t)
+      drawCaptions(ctx2d, captions, captionStyle, t)
       setTime(t)
       if (t >= duration) return stop()
       raf = requestAnimationFrame(tick)
