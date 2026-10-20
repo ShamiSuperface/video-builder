@@ -26,4 +26,5 @@ npm run dev
 - `src/Captions.tsx` עורך כתוביות, סנכרון בהקשה וסנכרון אוטומטי
 - `src/lib/whisper.worker.ts`, `src/lib/align.ts` סנכרון אוטומטי: זיהוי דיבור (Whisper דרך transformers.js, המודל יורד מ-Hugging Face פעם אחת) ויישור המילים שהודבקו למילים שנשמעו
 - `src/lib/drafts.ts`, `src/Drafts.tsx` טיוטות: שמירה ב-IndexedDB של הדפדפן (כולל התמונות והשיר), שמירה אוטומטית, פתיחה ומחיקה
+- `src/lib/clip.worker.ts`, `src/lib/storyboard.ts`, `src/LyricsArrange.tsx` סידור לפי מילות השיר: CLIP (אנגלית) או Jina CLIP v2 (רב-לשוני) משווים כל תמונה לכל שורה, ושיבוץ הונגרי בוחר לכל זמן בסרטון את התמונה המתאימה
 - `src/Player.tsx` ניגון וייצוא (MediaRecorder)

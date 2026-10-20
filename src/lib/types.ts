@@ -25,6 +25,8 @@ export interface Clip {
   photoId: string
   filter: FilterName
   kenBurns: boolean
+  /** Lyric line this photo was matched to by "arrange by lyrics". */
+  lyric?: string
 }
 
 export type Transition = 'cut' | 'crossfade' | 'fadeBlack'

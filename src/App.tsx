@@ -9,6 +9,7 @@ import Player from './Player'
 import Captions from './Captions'
 import { DEFAULT_CAPTION_STYLE, type Caption, type CaptionStyle } from './lib/captions'
 import Drafts from './Drafts'
+import LyricsArrange from './LyricsArrange'
 import { loadDraft, makeThumb, saveDraft, type DraftData } from './lib/drafts'
 
 const FORMATS = {
@@ -467,6 +468,13 @@ export default function App() {
 
       <section>
         <h2>4. ציר זמן ועריכה</h2>
+        <LyricsArrange
+          project={fullProject}
+          photos={photoMap}
+          captions={captions}
+          track={track}
+          setClips={(clips) => setProject((pr) => ({ ...pr, clips }))}
+        />
         <div className="row">
           <button className="secondary" onClick={sortTimelineByDate}>
             מיין לפי תאריך
@@ -536,6 +544,11 @@ export default function App() {
                 }}
               >
                 <img src={p.url} style={{ filter: FILTERS[c.filter].css }} />
+                {c.lyric && (
+                  <span className="lyric" dir="auto" title={c.lyric}>
+                    ♪ {c.lyric}
+                  </span>
+                )}
                 <select value={c.filter} onChange={(e) => updateClip(i, { filter: e.target.value as FilterName })}>
                   {Object.entries(FILTERS).map(([k, f]) => (
                     <option key={k} value={k}>
