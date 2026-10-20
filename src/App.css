@@ -1,0 +1,165 @@
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+  padding: 8px 0;
+}
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+h2 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+section {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 4px 0;
+}
+.status {
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+button,
+.btn {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: none;
+  display: inline-block;
+}
+button.secondary,
+.btn.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+button.mini {
+  padding: 2px 8px;
+  font-size: 0.8rem;
+}
+select,
+input[type='number'] {
+  font: inherit;
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  max-width: 120px;
+}
+.refs {
+  display: flex;
+  gap: 6px;
+}
+.refs img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+.grid figure {
+  margin: 0;
+  position: relative;
+  border: 3px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.grid figure.sel {
+  border-color: var(--accent);
+}
+.grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+.grid figcaption {
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  color: var(--muted);
+}
+.grid .match {
+  color: var(--ok);
+  font-weight: bold;
+}
+.grid figure .mini {
+  position: absolute;
+  top: 4px;
+  inset-inline-start: 4px;
+  opacity: 0;
+}
+.grid figure:hover .mini {
+  opacity: 1;
+}
+.timeline {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.clip {
+  flex: 0 0 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  cursor: grab;
+}
+.clip img {
+  width: 120px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.player canvas {
+  width: 100%;
+  background: #000;
+  border-radius: 8px;
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
+}
