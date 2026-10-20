@@ -56,3 +56,30 @@ export function bestDistance(faces: Float32Array[], refs: Float32Array[]): numbe
   for (const f of faces) for (const r of refs) best = Math.min(best, faceapi.euclideanDistance(f, r))
   return best
 }
+
+/**
+ * Which people appear in a photo. Each face is assigned to at most one person
+ * (closest first), so two look-alike people can't both claim the same face.
+ */
+export function matchPeople(
+  faces: Float32Array[],
+  people: { id: string; refs: { descriptor: Float32Array }[] }[],
+  threshold: number,
+): Map<string, number> {
+  const pairs: { face: number; person: string; d: number }[] = []
+  faces.forEach((f, fi) =>
+    people.forEach((p) => {
+      const d = bestDistance([f], p.refs.map((r) => r.descriptor))
+      if (d <= threshold) pairs.push({ face: fi, person: p.id, d })
+    }),
+  )
+  pairs.sort((a, b) => a.d - b.d)
+  const usedFaces = new Set<number>()
+  const found = new Map<string, number>()
+  for (const { face, person, d } of pairs) {
+    if (usedFaces.has(face) || found.has(person)) continue
+    usedFaces.add(face)
+    found.set(person, d)
+  }
+  return found
+}

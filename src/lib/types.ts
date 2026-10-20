@@ -9,10 +9,17 @@ export interface Photo {
   /** Capture time from EXIF, falling back to the file's lastModified. */
   takenAt: number
   hasExifDate: boolean
-  /** Best (smallest) face distance to the reference person; undefined until scanned. */
-  faceDistance?: number
-  faceCount?: number
+  /** Descriptors of every face in the photo; undefined until scanned. */
+  faces?: Float32Array[]
 }
+
+export interface Person {
+  id: string
+  name: string
+  refs: { url: string; descriptor: Float32Array }[]
+}
+
+export type MatchMode = 'any' | 'all'
 
 export interface Clip {
   photoId: string
