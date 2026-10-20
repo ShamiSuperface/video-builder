@@ -265,3 +265,73 @@ button.tap {
 .caption-table tr.current {
   background: var(--accent-soft);
 }
+header {
+  flex-wrap: wrap;
+}
+.draft-name {
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg);
+  min-width: 0;
+  width: 14em;
+  max-width: 100%;
+}
+.saved {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+button.link {
+  background: none;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 600;
+}
+button.danger {
+  background: #c0392b;
+}
+.drafts ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.drafts li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px;
+  border-radius: 8px;
+}
+.drafts li.current {
+  background: var(--accent-soft);
+}
+.drafts img,
+.drafts .thumb-empty {
+  width: 56px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--border);
+}
+.drafts .meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+.drafts .meta span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.badge {
+  font-size: 0.8rem;
+  color: var(--accent);
+}

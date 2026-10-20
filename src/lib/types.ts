@@ -16,7 +16,7 @@ export interface Photo {
 export interface Person {
   id: string
   name: string
-  refs: { url: string; descriptor: Float32Array }[]
+  refs: { url: string; blob: Blob; descriptor: Float32Array }[]
 }
 
 export type MatchMode = 'any' | 'all'

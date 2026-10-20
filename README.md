@@ -24,4 +24,5 @@ npm run dev
 - `src/lib/render.ts` ציור פריימים: פילטרים, זום קן ברנס, מעברים
 - `src/lib/captions.ts` כתוביות: ייבוא LRC/SRT, הצמדה לביטים, ציור על הווידאו (כולל עברית)
 - `src/Captions.tsx` עורך כתוביות וסנכרון בהקשה
+- `src/lib/drafts.ts`, `src/Drafts.tsx` טיוטות: שמירה ב-IndexedDB של הדפדפן (כולל התמונות והשיר), שמירה אוטומטית, פתיחה ומחיקה
 - `src/Player.tsx` ניגון וייצוא (MediaRecorder)

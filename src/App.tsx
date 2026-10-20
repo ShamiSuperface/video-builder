@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import type { Clip, FilterName, MatchMode, Person, Photo, Project, Track, Transition } from './lib/types'
 import { loadPhotos, sortByDate } from './lib/photos'
@@ -8,6 +8,8 @@ import { FILTERS } from './lib/render'
 import Player from './Player'
 import Captions from './Captions'
 import { DEFAULT_CAPTION_STYLE, type Caption, type CaptionStyle } from './lib/captions'
+import Drafts from './Drafts'
+import { loadDraft, makeThumb, saveDraft, type DraftData } from './lib/drafts'
 
 const FORMATS = {
   landscape: { label: 'רוחבי 16:9', width: 1280, height: 720 },
@@ -38,6 +40,10 @@ export default function App() {
     beatsPerCut: 2,
   })
   const dragFrom = useRef<number | null>(null)
+  const [draftId, setDraftId] = useState<string | null>(null)
+  const [draftName, setDraftName] = useState('סרטון חדש')
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [draftsVersion, setDraftsVersion] = useState(0)
 
   const photoMap = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos])
   const withRefs = useMemo(() => people.filter((p) => p.refs.length), [people])
@@ -94,7 +100,7 @@ export default function App() {
     for (const f of files) {
       const url = URL.createObjectURL(f)
       const d = await referenceDescriptor(url)
-      if (d) addRef({ url, descriptor: d })
+      if (d) addRef({ url, blob: f, descriptor: d })
       else missing++
     }
     setLoading(missing ? `לא נמצאו פנים ב-${missing} תמונות רפרנס` : '')
@@ -103,7 +109,7 @@ export default function App() {
   async function useAsReference(p: Photo) {
     setLoading('מחפש פנים בתמונה…')
     const d = await referenceDescriptor(p.url)
-    if (d) addRef({ url: p.url, descriptor: d })
+    if (d) addRef({ url: p.url, blob: p.file, descriptor: d })
     setLoading(d ? '' : 'לא נמצאו פנים בתמונה הזו')
   }
 
@@ -179,12 +185,122 @@ export default function App() {
 
   const matchCount = photos.filter(isMatch).length
 
+  const draftData = (): DraftData => ({
+    photos: photos.map(({ id, file, path, takenAt, hasExifDate, faces }) => ({ id, file, path, takenAt, hasExifDate, faces })),
+    people: people.map(({ id, name, refs }) => ({ id, name, refs: refs.map(({ blob, descriptor }) => ({ blob, descriptor })) })),
+    matchMode,
+    threshold,
+    project,
+    format,
+    track: track && { file: track.file, beats: track.beats, bpm: track.bpm },
+    captions,
+    captionStyle,
+  })
+
+  const saveNow = useCallback(async () => {
+    const id = draftId ?? crypto.randomUUID()
+    const first = photoMap.get(project.clips[0]?.photoId ?? '') ?? photos[0]
+    await saveDraft({
+      id,
+      name: draftName.trim() || 'ללא שם',
+      updatedAt: Date.now(),
+      thumb: first ? await makeThumb(first.file) : undefined,
+      data: draftData(),
+    })
+    setDraftId(id)
+    setSavedAt(Date.now())
+    setDraftsVersion((v) => v + 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId, draftName, photos, people, matchMode, threshold, project, format, track, captions, captionStyle])
+
+  // Once a draft exists, keep it saved: a couple of seconds after the last change.
+  const firstRender = useRef(true)
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false
+      return
+    }
+    if (!draftId) return
+    const t = setTimeout(() => saveNow().catch(() => setLoading('השמירה האוטומטית נכשלה')), 2000)
+    return () => clearTimeout(t)
+    // Autosave on content changes only; saveNow itself changes with them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftName, photos, people, matchMode, threshold, project, format, track, captions, captionStyle])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        saveNow()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [saveNow])
+
+  async function openDraft(id: string) {
+    setLoading('פותח טיוטה…')
+    const d = await loadDraft(id)
+    if (!d) return setLoading('הטיוטה לא נמצאה')
+    const { data } = d
+    const restored: Photo[] = data.photos.map((p) => ({ ...p, name: p.file.name, url: URL.createObjectURL(p.file) }))
+    let restoredTrack: Track | null = null
+    if (data.track) {
+      const ctx = new AudioContext()
+      const buffer = await ctx.decodeAudioData(await data.track.file.arrayBuffer())
+      await ctx.close()
+      restoredTrack = { ...data.track, url: URL.createObjectURL(data.track.file), buffer }
+    }
+    // Skip one autosave: loading a draft is not an edit.
+    firstRender.current = true
+    setPhotos(restored)
+    setPeople(
+      data.people.map((p) => ({ ...p, refs: p.refs.map((r) => ({ ...r, url: URL.createObjectURL(r.blob) })) })),
+    )
+    setActivePerson(data.people[0]?.id ?? '')
+    setMatchMode(data.matchMode)
+    setThreshold(data.threshold)
+    setOnlyMatches(false)
+    setSelected(new Set())
+    setProject(data.project)
+    setFormat((data.format in FORMATS ? data.format : 'landscape') as keyof typeof FORMATS)
+    setTrack(restoredTrack)
+    setCaptions(data.captions)
+    setCaptionStyle(data.captionStyle)
+    setDraftId(d.id)
+    setDraftName(d.name)
+    setSavedAt(d.updatedAt)
+    setLoading('')
+  }
+
+  function newDraft() {
+    if (!draftId && (photos.length || captions.length) && !confirm('לפתוח סרטון חדש? העבודה הנוכחית לא נשמרה.')) return
+    location.reload()
+  }
+
+  const timeFmt = new Intl.DateTimeFormat('he-IL', { timeStyle: 'short' })
+
   return (
     <div className="app" dir="rtl">
       <header>
         <h1>בונה סרטונים</h1>
+        <input
+          id="draft-name"
+          className="draft-name"
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          aria-label="שם הסרטון"
+        />
+        <button onClick={() => saveNow()} title="Ctrl+S">
+          {draftId ? 'שמור' : 'שמור טיוטה'}
+        </button>
+        {savedAt && <span className="saved">נשמר {timeFmt.format(savedAt)} · נשמר אוטומטית</span>}
+        <button className="secondary" onClick={newDraft}>
+          חדש
+        </button>
         {loading && <div className="status">{loading}</div>}
       </header>
+      <Drafts version={draftsVersion} currentId={draftId} onOpen={openDraft} onDeleted={(id) => id === draftId && setDraftId(null)} />
 
       <section>
         <h2>1. תמונות</h2>
