@@ -35,7 +35,7 @@ export interface Project {
   defaultDuration: number
   transition: Transition
   transitionDuration: number
-  /** Cut every N beats when music is synced. */
+  /** Cut every N beats when music is synced; 0 spreads the photos over the whole song. */
   beatsPerCut: number
   width: number
   height: number

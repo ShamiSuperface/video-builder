@@ -18,9 +18,17 @@ export interface ScheduledClip {
   end: number
 }
 
+/** Beats per photo. 0 means automatic: spread the photos over the whole song. */
+export function cutEvery(project: Project, beats?: number[]) {
+  if (project.beatsPerCut > 0) return project.beatsPerCut
+  if (!beats?.length || !project.clips.length) return 2
+  return Math.max(1, Math.floor((beats.length - 1) / project.clips.length))
+}
+
 /** Clip start/end times: on every Nth beat when music is synced, otherwise a fixed duration. */
 export function schedule(project: Project, photos: Map<string, Photo>, beats?: number[]): ScheduledClip[] {
-  const cuts = beats?.length ? beats.filter((_, i) => i > 0 && i % project.beatsPerCut === 0) : []
+  const n = cutEvery(project, beats)
+  const cuts = beats?.length ? beats.filter((_, i) => i > 0 && i % n === 0) : []
   const out: ScheduledClip[] = []
   let t = 0
   project.clips.forEach((clip, i) => {

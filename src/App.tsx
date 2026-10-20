@@ -37,7 +37,7 @@ export default function App() {
     defaultDuration: 2.5,
     transition: 'crossfade',
     transitionDuration: 0.4,
-    beatsPerCut: 2,
+    beatsPerCut: 0,
   })
   const dragFrom = useRef<number | null>(null)
   const [draftId, setDraftId] = useState<string | null>(null)
@@ -582,6 +582,7 @@ export default function App() {
                   value={project.beatsPerCut}
                   onChange={(e) => setProject((pr) => ({ ...pr, beatsPerCut: +e.target.value }))}
                 >
+                  <option value={0}>אוטומטי (התמונות ממלאות את כל השיר)</option>
                   {[1, 2, 4, 8].map((n) => (
                     <option key={n} value={n}>
                       {n} ביטים
@@ -622,7 +623,14 @@ export default function App() {
             </select>
           </label>
         </div>
-        <Player project={fullProject} photos={photoMap} track={track} captions={captions} captionStyle={captionStyle} />
+        <Player
+          project={fullProject}
+          photos={photoMap}
+          track={track}
+          captions={captions}
+          captionStyle={captionStyle}
+          onFitSong={() => setProject((pr) => ({ ...pr, beatsPerCut: 0 }))}
+        />
       </section>
     </div>
   )

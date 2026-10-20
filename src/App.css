@@ -350,3 +350,16 @@ button.danger {
   font-weight: 700;
   margin-inline-start: 4px;
 }
+.warn {
+  background: #fff4dc;
+  color: #7a4b00;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+}
+@media (prefers-color-scheme: dark) {
+  .warn {
+    background: #3a2c10;
+    color: #f3cf86;
+  }
+}

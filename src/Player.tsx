@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Photo, Project, Track } from './lib/types'
-import { drawFrame, pickRecorderMime, preload, schedule, totalDuration } from './lib/render'
+import { cutEvery, drawFrame, pickRecorderMime, preload, schedule, totalDuration } from './lib/render'
 import { drawCaptions, type Caption, type CaptionStyle } from './lib/captions'
 
 interface Props {
@@ -9,11 +9,13 @@ interface Props {
   track: Track | null
   captions: Caption[]
   captionStyle: CaptionStyle
+  /** Switches cutting to automatic so the photos last as long as the song. */
+  onFitSong: () => void
 }
 
 type Mode = 'idle' | 'playing' | 'exporting'
 
-export default function Player({ project, photos, track, captions, captionStyle }: Props) {
+export default function Player({ project, photos, track, captions, captionStyle, onFitSong }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stopRef = useRef<(() => void) | null>(null)
   const [mode, setMode] = useState<Mode>('idle')
@@ -22,6 +24,7 @@ export default function Player({ project, photos, track, captions, captionStyle 
 
   const sched = useMemo(() => schedule(project, photos, track?.beats), [project, photos, track])
   const duration = totalDuration(sched)
+  const lateCaptions = captions.filter((c) => c.end > 0 && c.start >= duration).length
 
   // Show the first frame whenever the edit changes and nothing is playing.
   useEffect(() => {
@@ -139,8 +142,25 @@ export default function Player({ project, photos, track, captions, captionStyle 
           </a>
         )}
       </div>
-      {track && sched.length * project.beatsPerCut > track.beats.length && (
+      {track && sched.length * cutEvery(project, track.beats) > track.beats.length && (
         <p className="hint">יש יותר תמונות מביטים בשיר; התמונות האחרונות יקבלו משך קבוע.</p>
+      )}
+      {captions.length > 0 && !captions.some((c) => c.end > 0) && (
+        <p className="warn">הכתוביות עדיין לא מתוזמנות, ולכן לא מופיעות. סנכרן אותן בשלב 6 (אוטומטית או בהקשה).</p>
+      )}
+      {sched.length > 0 && lateCaptions > 0 && (
+        <p className="warn">
+          {lateCaptions} שורות כתוביות מתחילות אחרי שהסרטון נגמר (בשנייה {duration.toFixed(1)}), ולכן לא יופיעו.
+          {track && project.beatsPerCut !== 0 && (
+            <>
+              {' '}
+              <button className="mini" onClick={onFitSong}>
+                מתח את התמונות על כל השיר
+              </button>
+            </>
+          )}
+          {(!track || project.beatsPerCut === 0) && ' הוסף עוד תמונות לסרטון, או הגדל את משך כל תמונה.'}
+        </p>
       )}
     </div>
   )
