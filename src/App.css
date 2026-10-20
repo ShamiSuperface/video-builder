@@ -335,3 +335,18 @@ button.danger {
   font-size: 0.8rem;
   color: var(--accent);
 }
+.auto-sync {
+  border: 1px dashed var(--accent);
+  border-radius: 10px;
+  padding: 4px 12px 10px;
+  margin: 10px 0;
+}
+.status.done {
+  display: inline-block;
+  border-radius: 8px;
+}
+.caption-table tr.estimated td:first-child span {
+  color: #c27c0e;
+  font-weight: 700;
+  margin-inline-start: 4px;
+}

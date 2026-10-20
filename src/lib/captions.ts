@@ -5,6 +5,8 @@ export interface Caption {
   text: string
   /** Optional translated line shown with or instead of the original. */
   translation: string
+  /** Set by automatic sync when none of the line's words were heard, so its timing is a guess. */
+  estimated?: boolean
 }
 
 export type CaptionShow = 'original' | 'translation' | 'both'

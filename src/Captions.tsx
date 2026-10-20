@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Track } from './lib/types'
+import { alignCaptions, linesFromWords } from './lib/align'
+import type { WorkerOut } from './lib/whisper.worker'
 import {
   applyTranslation,
   fillEnds,
@@ -28,6 +30,10 @@ export default function Captions({ captions, setCaptions, style, setStyle, track
   const [syncIndex, setSyncIndex] = useState<number | null>(null)
   const [now, setNow] = useState(0)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const workerRef = useRef<Worker | null>(null)
+  const [auto, setAuto] = useState<{ busy: boolean; message: string } | null>(null)
+  const [model, setModel] = useState('Xenova/whisper-base')
+  const [language, setLanguage] = useState('auto')
   const latest = useRef({ captions, syncIndex })
   latest.current = { captions, syncIndex }
 
@@ -91,7 +97,9 @@ export default function Captions({ captions, setCaptions, style, setStyle, track
   }, [syncIndex])
 
   function update(i: number, patch: Partial<Caption>) {
-    setCaptions(captions.map((c, j) => (j === i ? { ...c, ...patch } : c)))
+    // Editing a time by hand confirms it, so it is no longer an estimate.
+    const confirmed = 'start' in patch || 'end' in patch ? { estimated: false } : {}
+    setCaptions(captions.map((c, j) => (j === i ? { ...c, ...patch, ...confirmed } : c)))
   }
 
   function shiftAll(dt: number) {
@@ -114,6 +122,69 @@ export default function Captions({ captions, setCaptions, style, setStyle, track
   }
 
   const syncing = syncIndex !== null
+
+  async function autoSync() {
+    if (!track) return
+    setAuto({ busy: true, message: 'מכין את השמע…' })
+    try {
+      // Whisper expects 16 kHz mono.
+      const off = new OfflineAudioContext(1, Math.ceil(track.buffer.duration * 16000), 16000)
+      const src = off.createBufferSource()
+      src.buffer = track.buffer
+      src.connect(off.destination)
+      src.start()
+      const audio = (await off.startRendering()).getChannelData(0)
+
+      workerRef.current ??= new Worker(new URL('./lib/whisper.worker.ts', import.meta.url), { type: 'module' })
+      const worker = workerRef.current
+      const downloads = new Map<string, [number, number]>()
+      const result = await new Promise<Extract<WorkerOut, { type: 'done' }>>((resolve, reject) => {
+        worker.onmessage = (e: MessageEvent<WorkerOut>) => {
+          const m = e.data
+          if (m.type === 'download') {
+            downloads.set(m.file, [m.loaded, m.total])
+            const [l, t] = [...downloads.values()].reduce((a, b) => [a[0] + b[0], a[1] + b[1]], [0, 0])
+            setAuto({ busy: true, message: `מוריד מודל זיהוי דיבור (פעם ראשונה בלבד) ${t ? Math.round((l / t) * 100) : 0}%` })
+          } else if (m.type === 'status') setAuto({ busy: true, message: m.message })
+          else if (m.type === 'error') reject(new Error(m.message))
+          else resolve(m)
+        }
+        worker.postMessage({ audio, model, language }, [audio.buffer])
+      })
+
+      if (!result.words.length) {
+        setAuto({ busy: false, message: 'לא זוהו מילים בשיר. נסה לבחור את שפת השיר, או מודל "מדויק".' })
+        return
+      }
+      const translationLines = translation.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+      if (!original.trim()) {
+        const lines = linesFromWords(result.words, translationLines)
+        setCaptions(lines)
+        setOriginal(lines.map((c) => c.text).join('\n'))
+        setAuto({
+          busy: false,
+          message: `תמללתי ${lines.length} שורות מהשיר. בדוק את הטקסט בטבלה; שגיאות בתמלול נפוצות כשהמוזיקה חזקה.`,
+        })
+        return
+      }
+      const base = fromLines(original, translation)
+      const { captions: timed, matched } = alignCaptions(base, result.words, track.buffer.duration)
+      setCaptions(timed)
+      const est = timed.filter((c) => c.estimated).length
+      setAuto({
+        busy: false,
+        message:
+          matched < 0.3
+            ? `זיהיתי רק ${Math.round(matched * 100)}% מהמילים, כך שהתזמון כנראה לא מדויק. ודא שהמילים במקור הן בשפת השיר ובחר את השפה, או נסה את המודל "מדויק".`
+            : `סונכרן. ${Math.round(matched * 100)}% מהמילים זוהו בשיר.${est ? ` ${est} שורות תוזמנו בהערכה ומסומנות ב-≈; כדאי לבדוק אותן.` : ''}${result.wordLevel ? '' : ' (תזמון לפי משפטים, לא לפי מילים.)'}`,
+      })
+    } catch (err) {
+      setAuto({
+        busy: false,
+        message: `הסנכרון האוטומטי נכשל: ${err instanceof Error ? err.message : err}. אפשר לנסות שוב או לסנכרן בהקשה.`,
+      })
+    }
+  }
 
   return (
     <div className="captions">
@@ -158,6 +229,44 @@ export default function Captions({ captions, setCaptions, style, setStyle, track
           ייבוא LRC / SRT
           <input type="file" accept=".lrc,.srt,text/plain" hidden onChange={(e) => onFile(e.target.files)} />
         </label>
+      </div>
+
+      <div className="auto-sync">
+        <div className="row">
+          <button disabled={!track || auto?.busy || syncing} onClick={autoSync}>
+            ✨ סנכרון אוטומטי לשיר
+          </button>
+          <label>
+            שפת השיר{' '}
+            <select id="asr-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
+              <option value="auto">זיהוי אוטומטי</option>
+              <option value="hebrew">עברית</option>
+              <option value="english">אנגלית</option>
+              <option value="arabic">ערבית</option>
+              <option value="spanish">ספרדית</option>
+              <option value="french">צרפתית</option>
+              <option value="russian">רוסית</option>
+              <option value="italian">איטלקית</option>
+              <option value="portuguese">פורטוגזית</option>
+            </select>
+          </label>
+          <label>
+            דיוק{' '}
+            <select id="asr-model" value={model} onChange={(e) => setModel(e.target.value)}>
+              <option value="Xenova/whisper-base">מהיר (הורדה של כ-80MB)</option>
+              <option value="Xenova/whisper-small">מדויק (הורדה של כ-250MB, איטי יותר)</option>
+            </select>
+          </label>
+        </div>
+        <p className="hint">
+          {!track
+            ? 'קודם מעלים שיר בשלב 5.'
+            : original.trim()
+              ? 'האפליקציה תקשיב לשיר ותתזמן כל שורה לפי המילים שהדבקת. התרגום יקבל את התזמון של השורה שמולו.'
+              : 'לא הודבקו מילים, אז האפליקציה תתמלל את השיר בעצמה. לתזמון מדויק של תרגום, הדבק גם את המילים במקור.'}{' '}
+          הכל רץ בדפדפן שלך; השיר לא נשלח לשום מקום.
+        </p>
+        {auto && <div className={`status ${auto.busy ? '' : 'done'}`}>{auto.message}</div>}
       </div>
 
       {captions.length > 0 && (
@@ -266,11 +375,12 @@ export default function Captions({ captions, setCaptions, style, setStyle, track
               </thead>
               <tbody>
                 {captions.map((c, i) => (
-                  <tr key={i} className={now >= c.start && now < c.end ? 'current' : ''}>
+                  <tr key={i} className={[now >= c.start && now < c.end ? 'current' : '', c.estimated ? 'estimated' : ''].join(' ')}>
                     <td>
                       <button className="mini secondary" disabled={!track} onClick={() => playFrom(c.start)} title="נגן מכאן">
                         ▶
                       </button>
+                      {c.estimated && <span title="התזמון של השורה הזו הוא הערכה">≈</span>}
                     </td>
                     <td>
                       <input
