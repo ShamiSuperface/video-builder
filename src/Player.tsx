@@ -32,12 +32,18 @@ export default function Player({ project, photos, track, captions, captionStyle,
     const canvas = canvasRef.current
     if (!canvas) return
     let cancelled = false
-    preload(sched).then((images) => {
+    const t = Math.min(time, duration - 0.01)
+    const draw = (images: Map<string, HTMLImageElement>) => {
       if (cancelled) return
       const ctx = canvas.getContext('2d')!
-      const t = Math.min(time, duration - 0.01)
       drawFrame(ctx, sched, images, project, t)
       drawCaptions(ctx, captions, captionStyle, t)
+    }
+    // Draw at once, then again once the shown photo's faces are found so the frame settles on them.
+    preload(sched, false).then((images) => {
+      draw(images)
+      const shown = sched.filter((c) => t >= c.start - 1 && t < c.end + 1)
+      preload(shown).then(() => draw(images))
     })
     return () => {
       cancelled = true
@@ -52,6 +58,7 @@ export default function Player({ project, photos, track, captions, captionStyle,
     const images = await preload(sched)
     const ctx2d = canvas.getContext('2d')!
     const audio = new AudioContext()
+    await audio.resume().catch(() => {})
     const dest = audio.createMediaStreamDestination()
     let source: AudioBufferSourceNode | null = null
     if (track) {
@@ -71,7 +78,8 @@ export default function Player({ project, photos, track, captions, captionStyle,
     const mime = pickRecorderMime()
     if (record) {
       const stream = canvas.captureStream(30)
-      dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t))
+      // A silent audio track stalls the MP4 muxer, so only add audio when there is music.
+      if (track) dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t))
       recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 })
       recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data)
       recorder.onstop = () => {

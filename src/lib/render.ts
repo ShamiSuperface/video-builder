@@ -1,5 +1,7 @@
 import type { Clip, FilterName, Photo, Project } from './types'
 import { loadImage } from './photos'
+import { faceBoxes } from './faces'
+import { cropAt, planMove, type Rect } from './kenburns'
 
 export const FILTERS: Record<FilterName, { label: string; css: string }> = {
   none: { label: 'ללא', css: 'none' },
@@ -45,9 +47,14 @@ export function totalDuration(s: ScheduledClip[]) {
   return s.length ? s[s.length - 1].end : 0
 }
 
-export async function preload(s: ScheduledClip[]) {
+/** Face boxes per photo URL, filled by preload so drawing stays synchronous. */
+const faces = new Map<string, Rect[]>()
+
+export async function preload(s: ScheduledClip[], withFaces = true) {
   const map = new Map<string, HTMLImageElement>()
   await Promise.all(s.map(async ({ photo }) => map.set(photo.url, await loadImage(photo.url))))
+  // Framing follows faces; detect them one at a time to keep the page responsive.
+  if (withFaces) for (const { photo } of s) if (!faces.has(photo.url)) faces.set(photo.url, await faceBoxes(photo.url))
   return map
 }
 
@@ -61,19 +68,15 @@ function drawClip(
 ) {
   const { width: W, height: H } = ctx.canvas
   const p = Math.min(1, Math.max(0, (t - sc.start) / Math.max(0.01, sc.end - sc.start)))
-  // Cover fit, then a slow zoom and pan whose direction alternates per clip.
-  const base = Math.max(W / img.naturalWidth, H / img.naturalHeight)
-  const zoom = sc.clip.kenBurns ? (index % 2 ? 1.12 - 0.12 * p : 1 + 0.12 * p) : 1
-  const w = img.naturalWidth * base * zoom
-  const h = img.naturalHeight * base * zoom
-  const dir = index % 4 < 2 ? 1 : -1
-  const pan = sc.clip.kenBurns ? (p - 0.5) * dir : 0
-  const x = (W - w) / 2 + pan * (w - W) * 0.8
-  const y = (H - h) / 2 + pan * (h - H) * 0.4
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  // Zoom in and out alternate per clip; both ends of the move keep the faces in frame.
+  const move = planMove(iw, ih, W / H, faces.get(sc.photo.url) ?? [], index % 2 === 0, index)
+  const crop = sc.clip.kenBurns ? cropAt(move, p) : planMove(iw, ih, W / H, faces.get(sc.photo.url) ?? [], true, index).from
   ctx.save()
   ctx.globalAlpha = alpha
   ctx.filter = FILTERS[sc.clip.filter].css
-  ctx.drawImage(img, x, y, w, h)
+  ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, W, H)
   ctx.restore()
 }
 

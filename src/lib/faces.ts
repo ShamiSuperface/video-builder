@@ -1,5 +1,6 @@
 import * as faceapi from '@vladmandic/face-api'
 import { loadImage } from './photos'
+import type { Rect } from './kenburns'
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models`
 /** Faces are detected on a downscaled copy; large photos are slow and gain little accuracy. */
@@ -35,6 +36,25 @@ export async function describeFaces(url: string): Promise<Float32Array[]> {
     .withFaceLandmarks()
     .withFaceDescriptors()
   return results.map((r) => r.descriptor)
+}
+
+const boxCache = new Map<string, Promise<Rect[]>>()
+
+/** Face boxes in the photo's own pixels, for framing. Detection only (no descriptors), cached per image. */
+export function faceBoxes(url: string): Promise<Rect[]> {
+  let p = boxCache.get(url)
+  if (!p) {
+    p = (async () => {
+      await loadModels()
+      const img = await loadImage(url)
+      const canvas = downscale(img)
+      const scale = img.naturalWidth / canvas.width
+      const dets = await faceapi.detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+      return dets.map(({ box }) => ({ x: box.x * scale, y: box.y * scale, w: box.width * scale, h: box.height * scale }))
+    })().catch(() => [])
+    boxCache.set(url, p)
+  }
+  return p
 }
 
 /** Reference descriptors for the person to find: the largest face in each reference photo. */
