@@ -18,7 +18,7 @@ export interface DraftPhoto {
 
 export interface DraftData {
   photos: DraftPhoto[]
-  people: { id: string; name: string; refs: { blob: Blob; descriptor: Float32Array }[] }[]
+  people: { id: string; name: string; blur?: boolean; refs: { blob: Blob; descriptor: Float32Array }[] }[]
   matchMode: MatchMode
   threshold: number
   project: Omit<Project, 'width' | 'height'> & { clips: Clip[] }

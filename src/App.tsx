@@ -1,10 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
-import type { Clip, FilterName, MatchMode, Person, Photo, Project, Track, Transition } from './lib/types'
-import { loadPhotos, sortByDate } from './lib/photos'
-import { describeFaces, loadModels, matchPeople, referenceDescriptor } from './lib/faces'
+import { zipSync } from 'fflate'
+import type {
+  BlurMode,
+  BlurSettings,
+  Clip,
+  EventPart,
+  FilterName,
+  MatchMode,
+  Person,
+  Photo,
+  Project,
+  Track,
+  Transition,
+} from './lib/types'
+import { loadImage, loadPhotos, sortByDate } from './lib/photos'
+import { describeFaces, faceDetails, loadModels, matchPeople, referenceDescriptor } from './lib/faces'
 import { detectBeats, mixToMono } from './lib/beats'
-import { FILTERS } from './lib/render'
+import { FILTERS, type BlurMap } from './lib/render'
+import { blurDecisions, DEFAULT_BLUR, renderPhoto } from './lib/blur'
+import EventParts from './EventParts'
+import FaceBlurEditor from './FaceBlurEditor'
 import Player from './Player'
 import Captions from './Captions'
 import { DEFAULT_CAPTION_STYLE, type Caption, type CaptionStyle } from './lib/captions'
@@ -45,6 +61,10 @@ export default function App() {
   const [draftName, setDraftName] = useState('סרטון חדש')
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [draftsVersion, setDraftsVersion] = useState(0)
+  const [blurMap, setBlurMap] = useState<BlurMap | undefined>()
+  const [blurStatus, setBlurStatus] = useState('')
+  const [faceEditor, setFaceEditor] = useState<string | null>(null)
+  const [zip, setZip] = useState<{ url: string; name: string; busy?: string } | null>(null)
 
   const photoMap = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos])
   const withRefs = useMemo(() => people.filter((p) => p.refs.length), [people])
@@ -61,6 +81,109 @@ export default function App() {
   }
   const visible = onlyMatches && scanned ? photos.filter(isMatch) : photos
   const fullProject: Project = { ...project, ...FORMATS[format] }
+  const blurSettings = project.blur ?? DEFAULT_BLUR
+  const parts = project.parts ?? []
+
+  // Which faces to hide in each timeline photo. Face detection is cached, so this reruns cheaply on any change.
+  useEffect(() => {
+    const overrides = project.faceBlur ?? {}
+    const inTimeline = [...new Set(project.clips.map((c) => c.photoId))]
+      .map((id) => photoMap.get(id))
+      .filter((p): p is Photo => !!p)
+    const todo =
+      blurSettings.mode !== 'off'
+        ? inTimeline
+        : inTimeline.filter((p) => Object.values(overrides[p.id] ?? {}).some(Boolean))
+    if (!todo.length) {
+      setBlurMap(undefined)
+      setBlurStatus('')
+      return
+    }
+    let alive = true
+    ;(async () => {
+      const rects = new Map<string, { x: number; y: number; w: number; h: number }[]>()
+      for (let i = 0; i < todo.length; i++) {
+        if (!alive) return
+        setBlurStatus(`מאתר פנים לטשטוש ${i + 1}/${todo.length}`)
+        const faces = await faceDetails(todo[i].url)
+        const d = blurDecisions(faces, people, threshold, blurSettings, overrides[todo[i].id])
+        rects.set(
+          todo[i].url,
+          faces.filter((_, j) => d.blurred[j]).map((f) => f.box),
+        )
+      }
+      if (!alive) return
+      setBlurMap({ rects, style: blurSettings.style })
+      setBlurStatus('')
+    })()
+    return () => {
+      alive = false
+    }
+    // blurSettings is derived from project.blur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.clips, project.blur, project.faceBlur, photoMap, people, threshold])
+
+  const setBlur = (patch: Partial<BlurSettings>) =>
+    setProject((pr) => ({ ...pr, blur: { ...(pr.blur ?? DEFAULT_BLUR), ...patch } }))
+
+  function setPersonBlur(id: string, on: boolean) {
+    setPeople((ps) => ps.map((p) => (p.id === id ? { ...p, blur: on } : p)))
+    if (on && blurSettings.mode === 'off') setBlur({ mode: 'marked' })
+  }
+
+  /** Clips for whole parts, in part order and by capture time within each part. */
+  function addParts(chosen: EventPart[]) {
+    const clips: Clip[] = chosen.flatMap((part) =>
+      sortByDate(part.photoIds.map((id) => photoMap.get(id)!).filter(Boolean)).map((p) => ({
+        photoId: p.id,
+        filter: 'none' as FilterName,
+        kenBurns: true,
+        part: part.id,
+      })),
+    )
+    setProject((pr) => ({ ...pr, clips: [...pr.clips, ...clips] }))
+  }
+
+  /** Groups the timeline by part (in the parts' order), by date within a part; photos outside any part go last. */
+  function arrangeByParts() {
+    setProject((pr) => {
+      const ps = pr.parts ?? []
+      const partOf = new Map<string, number>()
+      ps.forEach((part, i) => part.photoIds.forEach((id) => partOf.set(id, i)))
+      const key = (c: Clip) => partOf.get(c.photoId) ?? ps.length
+      const clips = pr.clips
+        .map((c) => ({ ...c, part: ps[key(c)]?.id }))
+        .sort((a, b) => key(a) - key(b) || (photoMap.get(a.photoId)?.takenAt ?? 0) - (photoMap.get(b.photoId)?.takenAt ?? 0))
+      return { ...pr, clips }
+    })
+  }
+
+  /** Every timeline photo with its filter and blur, full size, zipped (one folder per part). */
+  async function exportPhotos() {
+    const files: Record<string, Uint8Array> = {}
+    const seen = new Set<string>()
+    const clips = project.clips.filter((c) => photoMap.has(c.photoId) && !seen.has(c.photoId) && seen.add(c.photoId))
+    const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim()
+    for (let i = 0; i < clips.length; i++) {
+      setZip({ url: '', name: '', busy: `מכין תמונות ${i + 1}/${clips.length}` })
+      const c = clips[i]
+      const p = photoMap.get(c.photoId)!
+      const blob = await renderPhoto(
+        await loadImage(p.url),
+        FILTERS[c.filter].css,
+        blurMap?.rects.get(p.url) ?? [],
+        blurSettings.style,
+      )
+      const partIdx = parts.findIndex((x) => x.id === c.part)
+      const folder = partIdx >= 0 ? `${String(partIdx + 1).padStart(2, '0')} ${safe(parts[partIdx].name) || 'חלק'}/` : ''
+      const base = p.name.replace(/\.[^.]+$/, '')
+      files[`${folder}${String(i + 1).padStart(3, '0')}-${safe(base)}.jpg`] = new Uint8Array(await blob.arrayBuffer())
+    }
+    // JPEGs don't compress further; store them as they are.
+    const data = zipSync(files, { level: 0 })
+    const name = `${safe(draftName) || 'photos'}.zip`
+    setZip({ url: URL.createObjectURL(new Blob([data as BlobPart], { type: 'application/zip' })), name })
+  }
 
   async function onFolder(files: FileList | null) {
     if (!files?.length) return
@@ -188,7 +311,12 @@ export default function App() {
 
   const draftData = (): DraftData => ({
     photos: photos.map(({ id, file, path, takenAt, hasExifDate, faces }) => ({ id, file, path, takenAt, hasExifDate, faces })),
-    people: people.map(({ id, name, refs }) => ({ id, name, refs: refs.map(({ blob, descriptor }) => ({ blob, descriptor })) })),
+    people: people.map(({ id, name, refs, blur }) => ({
+      id,
+      name,
+      blur,
+      refs: refs.map(({ blob, descriptor }) => ({ blob, descriptor })),
+    })),
     matchMode,
     threshold,
     project,
@@ -359,6 +487,14 @@ export default function App() {
                 ))}
                 {!person.refs.length && <span className="hint">אין עדיין תמונות</span>}
               </div>
+              <label className="blur-toggle" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={!!person.blur}
+                  onChange={(e) => setPersonBlur(person.id, e.target.checked)}
+                />{' '}
+                טשטש את הפנים שלו/ה
+              </label>
               <div className="row">
                 <label className="btn secondary mini" onClick={() => setActivePerson(person.id)}>
                   + תמונות
@@ -423,10 +559,54 @@ export default function App() {
             </button>
           </div>
         )}
+        <h3>טשטוש פנים</h3>
+        <div className="row">
+          <label>
+            טשטש{' '}
+            <select id="blur-mode" value={blurSettings.mode} onChange={(e) => setBlur({ mode: e.target.value as BlurMode })}>
+              <option value="off">רק פנים שסימנתי ידנית</option>
+              <option value="marked">את האנשים שסימנתי "טשטש"</option>
+              <option value="others">את כל מי שלא ברשימת האנשים</option>
+              <option value="all">את כל הפנים</option>
+            </select>
+          </label>
+          <label>
+            סגנון{' '}
+            <select
+              id="blur-style"
+              value={blurSettings.style}
+              onChange={(e) => setBlur({ style: e.target.value as BlurSettings['style'] })}
+            >
+              <option value="blur">טשטוש</option>
+              <option value="pixelate">פיקסלים</option>
+            </select>
+          </label>
+          {blurStatus && <span className="status">{blurStatus}</span>}
+          {!blurStatus && blurMap && (
+            <span>{[...blurMap.rects.values()].reduce((n, r) => n + r.length, 0)} פנים יטושטשו בסרטון</span>
+          )}
+        </div>
+        <p className="hint">
+          הטשטוש נצרב בווידאו המיוצא ובתמונות שמורידים מהשלב האחרון, והוא עוקב אחרי הפנים גם בזום. אפשר לטשטש או
+          לבטל טשטוש של פנים מסוימות בכפתור "פנים" שעל כל תמונה בציר. "מי שלא ברשימה" שימושי כדי להסתיר אורחים
+          ועוברי אורח ולהשאיר רק את האנשים שהוספת.
+        </p>
       </section>
 
       <section>
         <h2>3. גלריה</h2>
+        <EventParts
+          source={visible}
+          photos={photoMap}
+          parts={parts}
+          setParts={(ps) => setProject((pr) => ({ ...pr, parts: ps }))}
+          partTitles={!!project.partTitles}
+          setPartTitles={(on) => setProject((pr) => ({ ...pr, partTitles: on }))}
+          onSelect={(ids) => setSelected(new Set(ids))}
+          onAdd={addParts}
+          onArrangeTimeline={arrangeByParts}
+          timelineCount={project.clips.length}
+        />
         <div className="row">
           <button disabled={!selected.size} onClick={() => addToTimeline([...selected])}>
             הוסף {selected.size || ''} נבחרות לסרטון
@@ -544,6 +724,11 @@ export default function App() {
                 }}
               >
                 <img src={p.url} style={{ filter: FILTERS[c.filter].css }} />
+                {c.part && parts.some((x) => x.id === c.part) && (
+                  <span className="part-tag" title="חלק באירוע">
+                    🧩 {parts.find((x) => x.id === c.part)!.name}
+                  </span>
+                )}
                 {c.lyric && (
                   <span className="lyric" dir="auto" title={c.lyric}>
                     ♪ {c.lyric}
@@ -565,6 +750,13 @@ export default function App() {
                   זום
                 </label>
                 <button
+                  className="mini secondary"
+                  title="טשטוש פנים בתמונה הזו"
+                  onClick={() => setFaceEditor(p.id)}
+                >
+                  פנים{blurMap?.rects.get(p.url)?.length ? ` · ${blurMap.rects.get(p.url)!.length} מטושטשות` : ''}
+                </button>
+                <button
                   className="mini"
                   onClick={() => setProject((pr) => ({ ...pr, clips: pr.clips.filter((_, j) => j !== i) }))}
                 >
@@ -575,6 +767,24 @@ export default function App() {
           })}
           {!project.clips.length && <p className="hint">הוסף תמונות מהגלריה. אפשר לגרור כדי לשנות סדר.</p>}
         </div>
+        {faceEditor && photoMap.get(faceEditor) && (
+          <FaceBlurEditor
+            photo={photoMap.get(faceEditor)!}
+            people={people}
+            threshold={threshold}
+            settings={blurSettings}
+            overrides={project.faceBlur?.[faceEditor] ?? {}}
+            onChange={(o) =>
+              setProject((pr) => {
+                const faceBlur = { ...pr.faceBlur }
+                if (Object.keys(o).length) faceBlur[faceEditor] = o
+                else delete faceBlur[faceEditor]
+                return { ...pr, faceBlur }
+              })
+            }
+            onClose={() => setFaceEditor(null)}
+          />
+        )}
       </section>
 
       <section>
@@ -643,7 +853,20 @@ export default function App() {
           captions={captions}
           captionStyle={captionStyle}
           onFitSong={() => setProject((pr) => ({ ...pr, beatsPerCut: 0 }))}
+          blur={blurMap}
+          blurPending={!!blurStatus}
         />
+        <div className="row">
+          <button className="secondary" disabled={!project.clips.length || !!blurStatus || !!zip?.busy} onClick={() => exportPhotos()}>
+            הורד את התמונות (עם הטשטוש והפילטרים) כ-ZIP
+          </button>
+          {zip?.busy && <span className="status">{zip.busy}</span>}
+          {zip?.url && (
+            <a className="btn" href={zip.url} download={zip.name}>
+              הורדת {zip.name}
+            </a>
+          )}
+        </div>
       </section>
     </div>
   )

@@ -2,6 +2,14 @@ import type { Clip, FilterName, Photo, Project } from './types'
 import { loadImage } from './photos'
 import { faceBoxes } from './faces'
 import { cropAt, planMove, type Rect } from './kenburns'
+import { obscureFaces } from './blur'
+import type { BlurSettings } from './types'
+
+/** Faces to blur, by photo URL, in the photo's own pixels. */
+export interface BlurMap {
+  rects: Map<string, Rect[]>
+  style: BlurSettings['style']
+}
 
 export const FILTERS: Record<FilterName, { label: string; css: string }> = {
   none: { label: 'ללא', css: 'none' },
@@ -65,6 +73,7 @@ function drawClip(
   index: number,
   t: number,
   alpha: number,
+  blur?: BlurMap,
 ) {
   const { width: W, height: H } = ctx.canvas
   const p = Math.min(1, Math.max(0, (t - sc.start) / Math.max(0.01, sc.end - sc.start)))
@@ -77,6 +86,8 @@ function drawClip(
   ctx.globalAlpha = alpha
   ctx.filter = FILTERS[sc.clip.filter].css
   ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, W, H)
+  const hide = blur?.rects.get(sc.photo.url)
+  if (hide?.length) obscureFaces(ctx, img, crop, hide, blur!.style)
   ctx.restore()
 }
 
@@ -86,6 +97,51 @@ export function drawFrame(
   images: Map<string, HTMLImageElement>,
   project: Project,
   t: number,
+  blur?: BlurMap,
+) {
+  drawPhotos(ctx, s, images, project, t, blur)
+  if (project.partTitles) drawPartTitle(ctx, s, project, t)
+}
+
+/** The part's name fades in over the first photo of each part. */
+function drawPartTitle(ctx: CanvasRenderingContext2D, s: ScheduledClip[], project: Project, t: number) {
+  const i = s.findIndex((c) => t >= c.start && t < c.end)
+  const cur = s[i]
+  if (!cur?.clip.part || s[i - 1]?.clip.part === cur.clip.part) return
+  const name = project.parts?.find((p) => p.id === cur.clip.part)?.name.trim()
+  if (!name) return
+  const len = Math.min(2.5, cur.end - cur.start)
+  const since = t - cur.start
+  if (since > len) return
+  const fade = 0.4
+  // The video's first title is shown at once, so it also appears on the still preview.
+  const alpha = Math.min(1, i === 0 ? 1 : since / fade, (len - since) / fade)
+  const { width: W, height: H } = ctx.canvas
+  const size = Math.round(Math.min(W, H) * 0.075)
+  ctx.save()
+  ctx.globalAlpha = Math.max(0, alpha)
+  ctx.direction = 'rtl'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = `700 ${size}px "Segoe UI", Arial, sans-serif`
+  const y = H * 0.16
+  const w = Math.min(W * 0.9, ctx.measureText(name).width + size * 1.6)
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'
+  ctx.beginPath()
+  ctx.roundRect(W / 2 - w / 2, y - size * 0.85, w, size * 1.7, size * 0.4)
+  ctx.fill()
+  ctx.fillStyle = '#fff'
+  ctx.fillText(name, W / 2, y, W * 0.85)
+  ctx.restore()
+}
+
+function drawPhotos(
+  ctx: CanvasRenderingContext2D,
+  s: ScheduledClip[],
+  images: Map<string, HTMLImageElement>,
+  project: Project,
+  t: number,
+  blur?: BlurMap,
 ) {
   const { width: W, height: H } = ctx.canvas
   ctx.fillStyle = '#000'
@@ -100,12 +156,12 @@ export function drawFrame(
   const into = cur.end - t // seconds left in this clip
 
   if (project.transition === 'crossfade' && next && into < td) {
-    drawClip(ctx, img, cur, i, t, 1)
+    drawClip(ctx, img, cur, i, t, 1, blur)
     const nimg = images.get(next.photo.url)
-    if (nimg) drawClip(ctx, nimg, next, i + 1, next.start, 1 - into / td)
+    if (nimg) drawClip(ctx, nimg, next, i + 1, next.start, 1 - into / td, blur)
     return
   }
-  drawClip(ctx, img, cur, i, t, 1)
+  drawClip(ctx, img, cur, i, t, 1, blur)
   if (project.transition === 'fadeBlack') {
     const half = td / 2
     const sinceStart = t - cur.start

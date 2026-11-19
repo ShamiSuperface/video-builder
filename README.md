@@ -27,4 +27,7 @@ npm run dev
 - `src/lib/whisper.worker.ts`, `src/lib/align.ts` סנכרון אוטומטי: זיהוי דיבור (Whisper דרך transformers.js, המודל יורד מ-Hugging Face פעם אחת) ויישור המילים שהודבקו למילים שנשמעו
 - `src/lib/drafts.ts`, `src/Drafts.tsx` טיוטות: שמירה ב-IndexedDB של הדפדפן (כולל התמונות והשיר), שמירה אוטומטית, פתיחה ומחיקה
 - `src/lib/clip.worker.ts`, `src/lib/storyboard.ts`, `src/LyricsArrange.tsx` סידור לפי מילות השיר: CLIP (אנגלית) או Jina CLIP v2 (רב-לשוני) משווים כל תמונה לכל שורה, ושיבוץ הונגרי בוחר לכל זמן בסרטון את התמונה המתאימה
+- `src/lib/blur.ts`, `src/FaceBlurEditor.tsx` טשטוש פנים: לפי אדם, כל מי שלא ברשימה או כל הפנים, טשטוש או פיקסלים, ובחירה ידנית בלחיצה על פנים. הטשטוש נצרב בווידאו ובתמונות שמורדות כ-ZIP
+- `src/lib/parts.ts`, `src/EventParts.tsx` חלקים באירוע: חלוקה אוטומטית לפי זמני צילום ודמיון חזותי (CLIP), שם מוצע לכל חלק, סידור הציר לפי חלקים וכותרת חלק בסרטון
+- `src/lib/clipClient.ts` עובד CLIP משותף, כדי שהמודל ווקטורי התמונות ייטענו פעם אחת
 - `src/Player.tsx` ניגון וייצוא (MediaRecorder)

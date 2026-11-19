@@ -17,6 +17,8 @@ export interface Person {
   id: string
   name: string
   refs: { url: string; blob: Blob; descriptor: Float32Array }[]
+  /** Blur this person's face when the blur mode is "marked people". */
+  blur?: boolean
 }
 
 export type MatchMode = 'any' | 'all'
@@ -27,6 +29,8 @@ export interface Clip {
   kenBurns: boolean
   /** Lyric line this photo was matched to by "arrange by lyrics". */
   lyric?: string
+  /** Event part this photo belongs to (EventPart id). */
+  part?: string
 }
 
 export type Transition = 'cut' | 'crossfade' | 'fadeBlack'
@@ -39,6 +43,13 @@ export interface Project {
   transitionDuration: number
   /** Cut every N beats when music is synced; 0 spreads the photos over the whole song. */
   beatsPerCut: number
+  blur?: BlurSettings
+  /** Manual blur choices per photo id and face index; they win over the automatic mode. */
+  faceBlur?: Record<string, Record<number, boolean>>
+  /** Detected (and renamed) parts of the event. */
+  parts?: EventPart[]
+  /** Show each part's name over its first photo. */
+  partTitles?: boolean
   width: number
   height: number
 }
@@ -49,4 +60,21 @@ export interface Track {
   buffer: AudioBuffer
   beats: number[]
   bpm: number
+}
+
+/**
+ * Which faces to obscure automatically: none, people marked for blurring,
+ * everyone who isn't one of the listed people, or every face.
+ */
+export type BlurMode = 'off' | 'marked' | 'others' | 'all'
+
+export interface BlurSettings {
+  mode: BlurMode
+  style: 'blur' | 'pixelate'
+}
+
+export interface EventPart {
+  id: string
+  name: string
+  photoIds: string[]
 }

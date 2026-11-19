@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Photo, Project, Track } from './lib/types'
-import { cutEvery, drawFrame, pickRecorderMime, preload, schedule, totalDuration } from './lib/render'
+import { cutEvery, drawFrame, pickRecorderMime, preload, schedule, totalDuration, type BlurMap } from './lib/render'
 import { drawCaptions, type Caption, type CaptionStyle } from './lib/captions'
 
 interface Props {
@@ -11,11 +11,15 @@ interface Props {
   captionStyle: CaptionStyle
   /** Switches cutting to automatic so the photos last as long as the song. */
   onFitSong: () => void
+  /** Faces to blur; burned into playback and export. */
+  blur?: BlurMap
+  /** Faces are still being found, so exporting now could miss a blur. */
+  blurPending?: boolean
 }
 
 type Mode = 'idle' | 'playing' | 'exporting'
 
-export default function Player({ project, photos, track, captions, captionStyle, onFitSong }: Props) {
+export default function Player({ project, photos, track, captions, captionStyle, onFitSong, blur, blurPending }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stopRef = useRef<(() => void) | null>(null)
   const [mode, setMode] = useState<Mode>('idle')
@@ -36,7 +40,7 @@ export default function Player({ project, photos, track, captions, captionStyle,
     const draw = (images: Map<string, HTMLImageElement>) => {
       if (cancelled) return
       const ctx = canvas.getContext('2d')!
-      drawFrame(ctx, sched, images, project, t)
+      drawFrame(ctx, sched, images, project, t, blur)
       drawCaptions(ctx, captions, captionStyle, t)
     }
     // Draw at once, then again once the shown photo's faces are found so the frame settles on them.
@@ -48,7 +52,7 @@ export default function Player({ project, photos, track, captions, captionStyle,
     return () => {
       cancelled = true
     }
-  }, [sched, project, mode, time, duration, captions, captionStyle])
+  }, [sched, project, mode, time, duration, captions, captionStyle, blur])
 
   async function run(record: boolean) {
     const canvas = canvasRef.current
@@ -109,7 +113,7 @@ export default function Player({ project, photos, track, captions, captionStyle,
 
     const tick = () => {
       const t = Math.max(0, audio.currentTime - startAt)
-      drawFrame(ctx2d, sched, images, project, t)
+      drawFrame(ctx2d, sched, images, project, t, blur)
       drawCaptions(ctx2d, captions, captionStyle, t)
       setTime(t)
       if (t >= duration) return stop()
@@ -133,7 +137,7 @@ export default function Player({ project, photos, track, captions, captionStyle,
             <button disabled={!sched.length} onClick={() => run(false)}>
               ▶ ניגון
             </button>
-            <button disabled={!sched.length} onClick={() => run(true)}>
+            <button disabled={!sched.length || blurPending} onClick={() => run(true)}>
               ייצוא וידאו
             </button>
           </>

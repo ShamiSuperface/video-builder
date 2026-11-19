@@ -38,23 +38,65 @@ export async function describeFaces(url: string): Promise<Float32Array[]> {
   return results.map((r) => r.descriptor)
 }
 
-const boxCache = new Map<string, Promise<Rect[]>>()
+export interface FaceDetail {
+  /** In the photo's own pixels. */
+  box: Rect
+  descriptor: Float32Array
+}
 
-/** Face boxes in the photo's own pixels, for framing. Detection only (no descriptors), cached per image. */
-export function faceBoxes(url: string): Promise<Rect[]> {
-  let p = boxCache.get(url)
+const detailCache = new Map<string, Promise<FaceDetail[]>>()
+
+/** Every face in a photo with its position and identity descriptor, cached per image. */
+export function faceDetails(url: string): Promise<FaceDetail[]> {
+  let p = detailCache.get(url)
   if (!p) {
     p = (async () => {
       await loadModels()
       const img = await loadImage(url)
       const canvas = downscale(img)
       const scale = img.naturalWidth / canvas.width
-      const dets = await faceapi.detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-      return dets.map(({ box }) => ({ x: box.x * scale, y: box.y * scale, w: box.width * scale, h: box.height * scale }))
+      const results = await faceapi
+        .detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .withFaceLandmarks()
+        .withFaceDescriptors()
+      return results.map(({ detection: { box }, descriptor }) => ({
+        box: { x: box.x * scale, y: box.y * scale, w: box.width * scale, h: box.height * scale },
+        descriptor,
+      }))
     })().catch(() => [])
-    boxCache.set(url, p)
+    detailCache.set(url, p)
   }
   return p
+}
+
+/** Face boxes in the photo's own pixels, for framing. */
+export const faceBoxes = (url: string): Promise<Rect[]> => faceDetails(url).then((d) => d.map((f) => f.box))
+
+/**
+ * Which person each face belongs to (person id, or null for strangers). Closest
+ * pairs are assigned first and each person takes at most one face.
+ */
+export function identifyFaces(
+  faces: Float32Array[],
+  people: { id: string; refs: { descriptor: Float32Array }[] }[],
+  threshold: number,
+): (string | null)[] {
+  const pairs: { face: number; person: string; d: number }[] = []
+  faces.forEach((f, fi) =>
+    people.forEach((p) => {
+      const d = bestDistance([f], p.refs.map((r) => r.descriptor))
+      if (d <= threshold) pairs.push({ face: fi, person: p.id, d })
+    }),
+  )
+  pairs.sort((a, b) => a.d - b.d)
+  const out: (string | null)[] = faces.map(() => null)
+  const taken = new Set<string>()
+  for (const { face, person } of pairs) {
+    if (out[face] || taken.has(person)) continue
+    out[face] = person
+    taken.add(person)
+  }
+  return out
 }
 
 /** Reference descriptors for the person to find: the largest face in each reference photo. */

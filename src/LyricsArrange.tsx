@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { Caption } from './lib/captions'
-import type { ClipIn, ClipModel, ClipOut } from './lib/clip.worker'
+import type { ClipModel } from './lib/clip.worker'
+import { clipCall, photoVectors } from './lib/clipClient'
 import { schedule } from './lib/render'
 import { storyboard } from './lib/storyboard'
 import type { Clip, Photo, Project, Track } from './lib/types'
@@ -29,33 +30,11 @@ export default function LyricsArrange({ project, photos, captions, track, setCli
   const [choice, setChoice] = useState<'auto' | ClipModel>('auto')
   const [status, setStatus] = useState<{ busy: boolean; message: string } | null>(null)
   const [undo, setUndo] = useState<Clip[] | null>(null)
-  const workerRef = useRef<Worker | null>(null)
-  const nextId = useRef(0)
-  const imageCache = useRef(new Map<string, Float32Array>())
 
   const timed = captions.filter((c) => c.end > 0)
   const canRun = timed.length > 0 && project.clips.length > 1
 
-  function call(msg: ClipIn extends infer T ? (T extends ClipIn ? Omit<T, 'id'> : never) : never): Promise<Float32Array[]> {
-    workerRef.current ??= new Worker(new URL('./lib/clip.worker.ts', import.meta.url), { type: 'module' })
-    const worker = workerRef.current
-    const id = nextId.current++
-    const downloads = new Map<string, [number, number]>()
-    return new Promise((resolve, reject) => {
-      worker.onmessage = (e: MessageEvent<ClipOut>) => {
-        const m = e.data
-        if (m.type === 'download') {
-          downloads.set(m.file, [m.loaded, m.total])
-          const [l, t] = [...downloads.values()].reduce((a, b) => [a[0] + b[0], a[1] + b[1]], [0, 0])
-          setStatus({ busy: true, message: `מוריד מודל התאמת תמונות (פעם ראשונה בלבד) ${t ? Math.round((l / t) * 100) : 0}%` })
-        } else if (m.type === 'progress') setStatus({ busy: true, message: `מנתח תמונות ${m.done}/${m.total}` })
-        else if (m.id !== id) return
-        else if (m.type === 'error') reject(new Error(m.message))
-        else resolve(m.vectors)
-      }
-      worker.postMessage({ ...msg, id })
-    })
-  }
+  const onStatus = (message: string) => setStatus({ busy: true, message })
 
   async function arrange() {
     // Auto: the small English model when every sung line has English text, otherwise the multilingual one.
@@ -69,17 +48,12 @@ export default function LyricsArrange({ project, photos, captions, track, setCli
         setStatus({ busy: false, message: 'לא מצאתי שורות באנגלית. בחר במודל "רב-לשוני" כדי להתאים לפי מילים בעברית.' })
         return
       }
-      const textVecs = await call({ kind: 'texts', model, texts: unique })
+      const textVecs = await clipCall({ kind: 'texts', model, texts: unique }, onStatus)
       const byText = new Map(unique.map((t, i) => [t, textVecs[i]]))
       const lineVecs = texts.map((t) => (t ? byText.get(t)! : null))
 
       const clipPhotos = project.clips.map((c) => photos.get(c.photoId)!)
-      const missing = clipPhotos.filter((p) => !imageCache.current.has(`${model}:${p.id}`))
-      if (missing.length) {
-        const vecs = await call({ kind: 'images', model, images: missing.map((p) => p.file) })
-        missing.forEach((p, i) => imageCache.current.set(`${model}:${p.id}`, vecs[i]))
-      }
-      const photoVecs = clipPhotos.map((p) => imageCache.current.get(`${model}:${p.id}`)!)
+      const photoVecs = await photoVectors(clipPhotos, model, onStatus)
 
       const slots = schedule(project, photos, track?.beats)
       const { order, lines } = storyboard(slots, captions, photoVecs, lineVecs, clipPhotos.map((p) => p.takenAt))
