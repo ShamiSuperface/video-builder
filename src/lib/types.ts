@@ -41,7 +41,7 @@ export interface Project {
   defaultDuration: number
   transition: Transition
   transitionDuration: number
-  /** Cut every N beats when music is synced; 0 spreads the photos over the whole song. */
+  /** Cut every N beats when music is synced; 0 spreads the photos over the whole song; -1 uses defaultDuration seconds. */
   beatsPerCut: number
   blur?: BlurSettings
   /** Manual blur choices per photo id and face index; they win over the automatic mode. */

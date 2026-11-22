@@ -691,7 +691,7 @@ export default function App() {
               <option value="fadeBlack">דעיכה לשחור</option>
             </select>
           </label>
-          {!track && (
+          {(!track || project.beatsPerCut === -1) && (
             <label>
               שניות לתמונה{' '}
               <input
@@ -806,6 +806,7 @@ export default function App() {
                   onChange={(e) => setProject((pr) => ({ ...pr, beatsPerCut: +e.target.value }))}
                 >
                   <option value={0}>אוטומטי (התמונות ממלאות את כל השיר)</option>
+                  <option value={-1}>משך קבוע לתמונה (בשניות)</option>
                   {[1, 2, 4, 8].map((n) => (
                     <option key={n} value={n}>
                       {n} ביטים
@@ -813,6 +814,21 @@ export default function App() {
                   ))}
                 </select>
               </label>
+              {project.beatsPerCut === -1 && (
+                <label>
+                  שניות לתמונה{' '}
+                  <input
+                    id="seconds-per-photo"
+                    type="number"
+                    min={0.5}
+                    step={0.5}
+                    value={project.defaultDuration}
+                    onChange={(e) =>
+                      setProject((pr) => ({ ...pr, defaultDuration: Math.max(0.5, +e.target.value) }))
+                    }
+                  />
+                </label>
+              )}
               <a className="btn secondary" href={track.url} download={track.file.name}>
                 ⬇ הורד שיר
               </a>
@@ -822,6 +838,14 @@ export default function App() {
             </>
           )}
         </div>
+        {track && project.beatsPerCut === -1 && (
+          <p className="hint">
+            הסרטון נגמר עם התמונה האחרונה: {project.clips.length} תמונות × {project.defaultDuration} שניות ≈{' '}
+            {Math.round(project.clips.length * project.defaultDuration)} שניות, מתוך {Math.round(track.buffer.duration)}{' '}
+            שניות של השיר. השיר נחתך שם ונדעך בשתי השניות האחרונות. כל חיתוך נצמד לביט הקרוב, כך שמשך תמונה יכול
+            לזוז בחלקיק שנייה.
+          </p>
+        )}
       </section>
 
       <section>

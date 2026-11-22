@@ -28,9 +28,9 @@ export interface ScheduledClip {
   end: number
 }
 
-/** Beats per photo. 0 means automatic: spread the photos over the whole song. */
+/** Beats per photo. 0 means automatic: spread the photos over the whole song. -1: fixed seconds (see schedule). */
 export function cutEvery(project: Project, beats?: number[]) {
-  if (project.beatsPerCut > 0) return project.beatsPerCut
+  if (project.beatsPerCut !== 0) return project.beatsPerCut
   if (!beats?.length || !project.clips.length) return 2
   return Math.max(1, Math.floor((beats.length - 1) / project.clips.length))
 }
@@ -38,17 +38,31 @@ export function cutEvery(project: Project, beats?: number[]) {
 /** Clip start/end times: on every Nth beat when music is synced, otherwise a fixed duration. */
 export function schedule(project: Project, photos: Map<string, Photo>, beats?: number[]): ScheduledClip[] {
   const n = cutEvery(project, beats)
-  const cuts = beats?.length ? beats.filter((_, i) => i > 0 && i % n === 0) : []
+  const cuts = beats?.length && n > 0 ? beats.filter((_, i) => i > 0 && i % n === 0) : []
   const out: ScheduledClip[] = []
   let t = 0
+  const dur = project.defaultDuration
   project.clips.forEach((clip, i) => {
     const photo = photos.get(clip.photoId)
     if (!photo) return
-    const end = cuts[i] ?? t + project.defaultDuration
+    // Fixed seconds with music: cut on the beat nearest the requested length, so cuts stay on the rhythm.
+    const end = n < 0 ? nearestBeat(beats, t + dur, t + dur * 0.6) : (cuts[i] ?? t + dur)
     out.push({ clip, photo, start: t, end })
     t = end
   })
   return out
+}
+
+function nearestBeat(beats: number[] | undefined, target: number, min: number) {
+  let best = target
+  let bestD = Infinity
+  for (const b of beats ?? []) {
+    if (b <= min) continue
+    const d = Math.abs(b - target)
+    if (d < bestD) (bestD = d), (best = b)
+    else if (b > target) break
+  }
+  return bestD <= 0.6 ? best : target
 }
 
 export function totalDuration(s: ScheduledClip[]) {

@@ -69,9 +69,11 @@ export default function Player({ project, photos, track, captions, captionStyle,
       source = audio.createBufferSource()
       source.buffer = track.buffer
       const gain = audio.createGain()
-      // Fade the music out over the last second of the video.
-      gain.gain.setValueAtTime(1, audio.currentTime + Math.max(0, duration - 1))
-      gain.gain.linearRampToValueAtTime(0, audio.currentTime + duration)
+      // The music ends with the video: fade it out over the last two seconds.
+      const at = audio.currentTime + 0.1
+      const fade = Math.min(2, duration / 2)
+      gain.gain.setValueAtTime(1, at + Math.max(0, duration - fade))
+      gain.gain.linearRampToValueAtTime(0, at + duration)
       source.connect(gain)
       gain.connect(audio.destination)
       if (record) gain.connect(dest)
