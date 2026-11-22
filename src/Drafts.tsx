@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { deleteDraft, listDrafts, type DraftSummary } from './lib/drafts'
+import { deleteDraft, downloadDraftTrack, listDrafts, type DraftSummary } from './lib/drafts'
 
 interface Props {
   /** Bumped after each save so the list refreshes. */
@@ -62,6 +62,7 @@ export default function Drafts({ version, currentId, onOpen, onDeleted }: Props)
                 <strong>{d.name}</strong>
                 <span>
                   {fmt.format(d.updatedAt)} · {d.clipCount} תמונות בסרטון
+                  {d.trackName && <> · ♪ {d.trackName}</>}
                 </span>
               </div>
               {d.id === currentId ? (
@@ -74,6 +75,11 @@ export default function Drafts({ version, currentId, onOpen, onDeleted }: Props)
                   }}
                 >
                   פתח
+                </button>
+              )}
+              {d.trackName && (
+                <button className="secondary" title={`הורד את ${d.trackName}`} onClick={() => downloadDraftTrack(d.id)}>
+                  ⬇ הורד שיר
                 </button>
               )}
               {confirmDelete === d.id ? (

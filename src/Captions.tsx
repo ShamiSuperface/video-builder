@@ -280,6 +280,9 @@ export default function Captions({ captions, setCaptions, style, setStyle, track
                 onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
                 onEnded={() => syncing && finishSync()}
               />
+              <a className="btn secondary mini" href={track.url} download={track.file.name} title={track.file.name}>
+                ⬇ הורד שיר
+              </a>
               {!syncing ? (
                 <button onClick={startSync}>סנכרון בהקשה</button>
               ) : (

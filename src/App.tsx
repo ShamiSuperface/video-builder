@@ -813,6 +813,9 @@ export default function App() {
                   ))}
                 </select>
               </label>
+              <a className="btn secondary" href={track.url} download={track.file.name}>
+                ⬇ הורד שיר
+              </a>
               <button className="secondary" onClick={() => setTrack(null)}>
                 הסר מוזיקה
               </button>

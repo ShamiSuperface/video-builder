@@ -37,7 +37,7 @@ export interface Draft {
   data: DraftData
 }
 
-export type DraftSummary = Omit<Draft, 'data'> & { photoCount: number; clipCount: number }
+export type DraftSummary = Omit<Draft, 'data'> & { photoCount: number; clipCount: number; trackName?: string }
 
 const DB = 'video-builder'
 const STORE = 'drafts'
@@ -68,12 +68,32 @@ export async function saveDraft(draft: Draft) {
 
 export const loadDraft = (id: string) => tx<Draft | undefined>('readonly', (s) => s.get(id))
 
+/** Saves a draft's song to the user's downloads, under its original file name. */
+export async function downloadDraftTrack(id: string) {
+  const file = (await loadDraft(id))?.data.track?.file
+  if (!file) return false
+  const url = URL.createObjectURL(file)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = file.name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  return true
+}
+
 export const deleteDraft = (id: string) => tx('readwrite', (s) => s.delete(id))
 
 export async function listDrafts(): Promise<DraftSummary[]> {
   const all = await tx<Draft[]>('readonly', (s) => s.getAll())
   return all
-    .map(({ data, ...rest }) => ({ ...rest, photoCount: data.photos.length, clipCount: data.project.clips.length }))
+    .map(({ data, ...rest }) => ({
+      ...rest,
+      photoCount: data.photos.length,
+      clipCount: data.project.clips.length,
+      trackName: data.track?.file.name,
+    }))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
